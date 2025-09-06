@@ -2,16 +2,17 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Prueba BLE - MLT-BT05 (FFE0/FEE0)</title>
+  <title>Prueba BLE - MLT-BT05 (FFEO/FEEO)</title>
   <style>
     body { font-family: Arial; padding: 20px; }
-    #log { border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: scroll; }
+    #log { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; }
+    button, input { margin: 5px; }
   </style>
 </head>
 <body>
   <h1>Prueba BLE - MLT-BT05</h1>
   <button id="connect">Conectar</button>
-  <input id="msg" type="text" placeholder="Escribe..." />
+  <input id="msg" type="text" placeholder="Escribe algo..." />
   <button id="send">Enviar</button>
   <h3>Log:</h3>
   <div id="log"></div>
@@ -19,65 +20,65 @@
 <script>
 let device, server, service, characteristic;
 
-// UUIDs correctos (hexadecimal con ceros, no letras O)
+// UUIDs de tus servicios detectados
 const possibleUUIDs = [0xFFE0, 0xFEE0];
 
-async function connect() {
+function log(msg) {
+  const div = document.getElementById("log");
+  div.innerHTML += msg + "<br>";
+  div.scrollTop = div.scrollHeight;
+}
+
+async function connectBLE() {
   try {
     device = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: 'MLT-BT05' }],
       optionalServices: possibleUUIDs
     });
 
-    server = await device.gatt.connect();
-    log("🔗 Conectado a " + device.name);
+    log("🔗 Dispositivo seleccionado: " + device.name);
 
-    // Intentar con todos los UUID hasta encontrar el válido
+    server = await device.gatt.connect();
+    log("✅ Conectado al servidor GATT");
+
+    // Intentar con los servicios hasta encontrar uno válido
     for (let uuid of possibleUUIDs) {
       try {
-        log("⏳ Probando servicio " + uuid.toString(16));
         service = await server.getPrimaryService(uuid);
         characteristic = await service.getCharacteristic(uuid);
 
-        // Si llegamos acá, se encontró el correcto
-        log("✅ Servicio encontrado: " + uuid.toString(16));
-
-        characteristic.startNotifications();
+        // Habilitar notificaciones
+        await characteristic.startNotifications();
         characteristic.addEventListener('characteristicvaluechanged', e => {
-          let value = new TextDecoder().decode(e.target.value);
+          const value = new TextDecoder().decode(e.target.value);
           log("RX: " + value);
         });
 
-        break; // salir del loop
+        log("✔ Servicio válido encontrado: " + uuid.toString(16));
+        break; // salimos del loop
       } catch (err) {
-        log("⚠️ No funcionó con UUID " + uuid.toString(16));
+        log("⚠ No funcionó con UUID " + uuid.toString(16));
       }
     }
 
   } catch (err) {
-    log("❌ Error: " + err);
+    log("❌ Error al conectar: " + err);
   }
 }
 
-function send() {
-  let text = document.getElementById("msg").value + "\n";
+async function sendBLE() {
+  const text = document.getElementById("msg").value + "\n";
   if (characteristic) {
-    let data = new TextEncoder().encode(text);
-    characteristic.writeValue(data);
+    const data = new TextEncoder().encode(text);
+    await characteristic.writeValue(data);
     log("TX: " + text);
   } else {
-    log("⚠️ No hay característica activa.");
+    log("⚠ No hay característica activa");
   }
 }
 
-function log(msg) {
-  let div = document.getElementById("log");
-  div.innerHTML += msg + "<br>";
-  div.scrollTop = div.scrollHeight;
-}
-
-document.getElementById("connect").onclick = connect;
-document.getElementById("send").onclick = send;
+document.getElementById("connect").onclick = connectBLE;
+document.getElementById("send").onclick = sendBLE;
 </script>
 </body>
 </html>
