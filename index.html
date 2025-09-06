@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Prueba BLE - MLT-BT05 (FFEO/FEEO)</title>
+  <title>Prueba BLE - MLT-BT05 (FFE0/FEE0)</title>
   <style>
     body { font-family: Arial; padding: 20px; }
     #log { border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: scroll; }
@@ -19,7 +19,8 @@
 <script>
 let device, server, service, characteristic;
 
-const possibleUUIDs = [0xFFEO, 0xFEEO]; // Tus servicios detectados
+// UUIDs correctos (hexadecimal con ceros, no letras O)
+const possibleUUIDs = [0xFFE0, 0xFEE0];
 
 async function connect() {
   try {
