@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Carrito GPS Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    #sidebar {
+      width: 25%;
+      background: #222;
+      color: white;
+      padding: 10px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    #map {
+      width: 75%;
+      height: 100%;
+    }
+    button {
+      width: 100%;
+      margin: 5px 0;
+      padding: 10px;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.85; }
+    .primary { background: #007bff; color: white; }
+    .danger { background: #dc3545; color: white; }
+    .secondary { background: #6c757d; color: white; }
+    #log {
+      flex-grow: 1;
+      background: #111;
+      color: #0f0;
+      margin-top: 10px;
+      padding: 5px;
+      font-size: 12px;
+      overflow-y: auto;
+      border-radius: 6px;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 5px;
+      margin: 10px 0;
+    }
+    .hidden { display: none; }
+    h2 { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h2>🚗 Carrito GPS</h2>
+
+    <button class="primary" onclick="setMode('manual')">Modo Manual</button>
+    <button class="primary" onclick="setMode('auto')">Modo Automático</button>
+    <button class="primary" onclick="sendCmd('TEST')">Modo Test</button>
+    <button class="danger" onclick="sendCmd('STOP')">STOP</button>
+
+    <!-- Controles Manual -->
+    <div id="manualControls" class="hidden">
+      <div class="controls">
+        <div></div>
+        <button class="secondary" onclick="sendCmd('F')">↑</button>
+        <div></div>
+        <button class="secondary" onclick="sendCmd('L')">←</button>
+        <button class="secondary" onclick="sendCmd('B')">↓</button>
+        <button class="secondary" onclick="sendCmd('R')">→</button>
+      </div>
+    </div>
+
+    <!-- Controles Automático -->
+    <div id="autoControls" class="hidden">
+      <button class="primary" onclick="goToDestination()">GO a Destino</button>
+      <p><b>Destino:</b> <span id="dest">Ninguno</span></p>
+    </div>
+
+    <div id="log"></div>
+    <button onclick="clearLog()">🗑️ Limpiar</button>
+    <button onclick="connectBT()">🔗 Conectar Bluetooth</button>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <script>
+    // === MAPA SATELITAL ===
+    let map = L.map('map').setView([-34.6, -58.4], 12);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/' +
+      'World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19
+    }).addTo(map);
+
+    let destMarker = null;
+    let destino = null;
+    let carroMarker = null;
+
+    map.on('click', function(e) {
+      if (currentMode !== "auto") return;
+      destino = e.latlng;
+      if (destMarker) map.removeLayer(destMarker);
+      destMarker = L.marker(destino).addTo(map).bindPopup("Destino seleccionado").openPopup();
+      document.getElementById("dest").textContent =
+        destino.lat.toFixed(6) + ", " + destino.lng.toFixed(6);
+    });
+
+    // === MODOS ===
+    let currentMode = null;
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById("manualControls").classList.add("hidden");
+      document.getElementById("autoControls").classList.add("hidden");
+
+      if (mode === "manual") {
+        sendCmd("M");
+        document.getElementById("manualControls").classList.remove("hidden");
+      }
+      if (mode === "auto") {
+        sendCmd("AUTO");
+        document.getElementById("autoControls").classList.remove("hidden");
+      }
+    }
+
+    // === BLUETOOTH / SERIAL ===
+    let port, reader;
+
+    async function connectBT() {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        log("✅ Conectado al puerto serie");
+
+        reader = port.readable.getReader();
+        readLoop();
+      } catch (err) {
+        log("❌ Error conectando: " + err);
+      }
+    }
+
+    async function readLoop() {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          let text = new TextDecoder().decode(value);
+          // Cada línea que llega
+          text.split("\n").forEach(line => procesarDatoBT(line));
+        }
+      }
+    }
+
+    function sendCmd(cmd) {
+      log(">> " + cmd);
+      if (!port) {
+        log("⚠️ Conectar BT primero");
+        return;
+      }
+      const writer = port.writable.getWriter();
+      const data = new TextEncoder().encode(cmd + "\n");
+      writer.write(data).then(() => writer.releaseLock());
+    }
+
+    // === DESTINO ===
+    function goToDestination() {
+      if (!destino) {
+        log("⚠️ No hay destino marcado");
+        return;
+      }
+      let cmd = `GO ${destino.lat.toFixed(6)} ${destino.lng.toFixed(6)}`;
+      sendCmd(cmd);
+    }
+
+    // === VISOR ===
+    function log(msg) {
+      let logDiv = document.getElementById("log");
+      logDiv.innerHTML += msg + "<br>";
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    function clearLog() {
+      document.getElementById("log").innerHTML = "";
+    }
+
+    // === PROCESAR DATOS DEL ARDUINO ===
+    function procesarDatoBT(dato) {
+      dato = dato.trim();
+      if (!dato) return;
+
+      // Revisamos si viene LAT/LON
+      if (dato.startsWith("LAT=")) {
+        const partes = dato.split(",");
+        const lat = parseFloat(partes[0].split("=")[1]);
+        const lon = parseFloat(partes[1].split("=")[1]);
+
+        // Si no hay marcador aún, lo creamos
+        if (!carroMarker) {
+          carroMarker = L.circleMarker([lat, lon], {
+            radius: 8,
+            color: "red",
+            fillColor: "red",
+            fillOpacity: 0.9
+          }).addTo(map);
+        } else {
+          // Actualizamos la posición
+          carroMarker.setLatLng([lat, lon]);
+        }
+
+        // Hacer que el mapa siga al carro en movimiento
+        map.setView([lat, lon], map.getZoom());
+      }
+
+      // También mostrar en log
+      log(dato);
+    }
+  </script>
+</body>
+</html>
